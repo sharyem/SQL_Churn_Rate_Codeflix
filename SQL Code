@@ -1,0 +1,80 @@
+-- Checking the columns 
+ SELECT * 
+ FROM subscriptions
+ LIMIT 5;
+
+-- Checking the month range
+ SELECT MIN(subscription_start), MAX(subscription_end)
+ FROM subscriptions;
+
+-- Creating table of the 3 months we want to analyze (Jan-Mar 2017) with first and last days
+ WITH months AS (
+  SELECT 
+    '2017-01-01' AS first_day, 
+    '2017-01-31' AS last_day 
+  UNION 
+  SELECT 
+    '2017-02-01' AS first_day, 
+    '2017-02-28' AS last_day 
+  UNION 
+  SELECT 
+    '2017-03-01' AS first_day, 
+    '2017-03-31' AS last_day
+),
+-- Creating a Cross Join with subscription info 
+cross_join AS (
+  SELECT *
+  FROM subscriptions
+  CROSS JOIN months
+),
+-- Creating columns with active users in each segment
+status AS (
+  SELECT 
+  id, 
+  first_day AS month,
+  CASE
+    WHEN 
+      (subscription_start < first_day) AND (
+          subscription_end > first_day 
+          OR subscription_end IS NULL)
+          AND (segment = 87)
+        THEN 1
+      ELSE 0
+  END AS is_active_87, 
+  CASE
+    WHEN 
+      (subscription_start < first_day) AND (
+          subscription_end > first_day 
+          OR subscription_end IS NULL)
+          AND (segment = 30)
+        THEN 1
+      ELSE 0
+  END AS is_active_30, 
+-- Creating columns with users that canceled in each segment
+ CASE
+    WHEN (subscription_end BETWEEN first_day AND last_day) AND (segment = 87) 
+      THEN 1
+    ELSE 0
+  END AS is_canceled_87, 
+  CASE
+    WHEN (subscription_end BETWEEN first_day AND last_day) AND (segment = 30) 
+      THEN 1
+    ELSE 0
+  END AS is_canceled_30  
+FROM cross_join),
+-- Aggregating the statuses 
+status_aggregate AS (
+  SELECT month, 
+  SUM(is_active_87) as 'sum_active_87',
+  SUM(is_active_30) as 'sum_active_30',
+  SUM(is_canceled_87) as 'sum_canceled_87',
+  SUM(is_canceled_30) as 'sum_canceled_30'
+FROM status
+GROUP BY month)
+-- Calculating churn rate
+SELECT 
+  month, 
+  (1.0 * sum_canceled_87/sum_active_87) as "churn_rate_87",
+  (1.0 * sum_canceled_30/sum_active_30) as "churn_rate_30"
+FROM status_aggregate
+GROUP BY month;
